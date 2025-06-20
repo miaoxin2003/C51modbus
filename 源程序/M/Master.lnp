@@ -1,0 +1,4 @@
+"STARTUP.obj",
+"HOST.obj" 
+TO "Master" 
+RAMSIZE(256) 

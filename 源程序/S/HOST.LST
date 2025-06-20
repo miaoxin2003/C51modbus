@@ -1,0 +1,450 @@
+C51 COMPILER V9.52.0.0   HOST                                                              12/26/2015 16:20:49 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE HOST
+OBJECT MODULE PLACED IN HOST.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE HOST.c BROWSE DEBUG OBJECTEXTEND TABS(3)
+
+line level    source
+
+   1          //FIRMWARE FOR THE HOST
+   2          #include <reg52.h>
+   3          #include <intrins.h>
+   4          
+   5          #define Uint16 unsigned int
+   6          #define Uint32 unsigned long
+   7          #define uchar  unsigned char
+   8          #define LCD_Data P1
+   9          #define Busy    0x80 //用于检测LCD状态字中的Busy标识
+  10          
+  11          sbit reving=P3^5;
+  12          sbit rw=P3^7;
+  13          //sbit tcnt=P3^5;
+  14          //sbit rcnt=P3^7;
+  15          
+  16          sbit LCD_RS=P3^2;//定义引脚
+  17          sbit LCD_RW=P3^3;
+  18          sbit LCD_E=P3^4;
+  19          
+  20          
+  21          void InitUART(void);
+  22          void SendOneByte(unsigned);
+  23          void mdproc(uchar);
+  24          Uint16 Crc16(Uint16 *puchMsg, Uint16 usDataLen); 
+  25          
+  26          void WriteDataLCD(unsigned char WDLCD);
+  27          void WriteCommandLCD(unsigned char WCLCD,BuysC);
+  28          unsigned char ReadDataLCD(void);
+  29          unsigned char ReadStatusLCD(void);
+  30          void LCDInit(void);
+  31          void DisplayOneChar(unsigned char X, unsigned char Y, unsigned char DData);
+  32          void DisplayListChar(unsigned char X, unsigned char Y, unsigned char *DData);
+  33          void Delay5Ms(void);
+  34          void Delay400Ms(void);
+  35          
+  36          unsigned char code row1[] = {"MODBUS FUNC:04H"};
+  37          unsigned char code row2[] = {"NOW GET START"};
+  38          
+  39          /* CRC 高位字节值表 */ 
+  40          const Uint16 code auchCRCHi[] = { 
+  41          0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 
+  42          0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 
+  43          0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 
+  44          0x80, 0x41, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 
+  45          0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 
+  46          0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41, 
+  47          0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 
+  48          0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 
+  49          0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 
+  50          0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 
+  51          0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 
+  52          0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 
+  53          0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 
+  54          0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 
+  55          0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 
+C51 COMPILER V9.52.0.0   HOST                                                              12/26/2015 16:20:49 PAGE 2   
+
+  56          0x80, 0x41, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 
+  57          0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 
+  58          0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 
+  59          0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 
+  60          0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 
+  61          0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 
+  62          0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 
+  63          0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 
+  64          0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 
+  65          0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 
+  66          0x80, 0x41, 0x00, 0xC1, 0x81, 0x40 
+  67          } ; 
+  68          
+  69          /* CRC低位字节值表*/ 
+  70          const Uint16 code auchCRCLo[] = { 
+  71          0x00, 0xC0, 0xC1, 0x01, 0xC3, 0x03, 0x02, 0xC2, 0xC6, 0x06, 
+  72          0x07, 0xC7, 0x05, 0xC5, 0xC4, 0x04, 0xCC, 0x0C, 0x0D, 0xCD, 
+  73          0x0F, 0xCF, 0xCE, 0x0E, 0x0A, 0xCA, 0xCB, 0x0B, 0xC9, 0x09, 
+  74          0x08, 0xC8, 0xD8, 0x18, 0x19, 0xD9, 0x1B, 0xDB, 0xDA, 0x1A, 
+  75          0x1E, 0xDE, 0xDF, 0x1F, 0xDD, 0x1D, 0x1C, 0xDC, 0x14, 0xD4, 
+  76          0xD5, 0x15, 0xD7, 0x17, 0x16, 0xD6, 0xD2, 0x12, 0x13, 0xD3, 
+  77          0x11, 0xD1, 0xD0, 0x10, 0xF0, 0x30, 0x31, 0xF1, 0x33, 0xF3, 
+  78          0xF2, 0x32, 0x36, 0xF6, 0xF7, 0x37, 0xF5, 0x35, 0x34, 0xF4, 
+  79          0x3C, 0xFC, 0xFD, 0x3D, 0xFF, 0x3F, 0x3E, 0xFE, 0xFA, 0x3A, 
+  80          0x3B, 0xFB, 0x39, 0xF9, 0xF8, 0x38, 0x28, 0xE8, 0xE9, 0x29, 
+  81          0xEB, 0x2B, 0x2A, 0xEA, 0xEE, 0x2E, 0x2F, 0xEF, 0x2D, 0xED, 
+  82          0xEC, 0x2C, 0xE4, 0x24, 0x25, 0xE5, 0x27, 0xE7, 0xE6, 0x26, 
+  83          0x22, 0xE2, 0xE3, 0x23, 0xE1, 0x21, 0x20, 0xE0, 0xA0, 0x60, 
+  84          0x61, 0xA1, 0x63, 0xA3, 0xA2, 0x62, 0x66, 0xA6, 0xA7, 0x67, 
+  85          0xA5, 0x65, 0x64, 0xA4, 0x6C, 0xAC, 0xAD, 0x6D, 0xAF, 0x6F, 
+  86          0x6E, 0xAE, 0xAA, 0x6A, 0x6B, 0xAB, 0x69, 0xA9, 0xA8, 0x68, 
+  87          0x78, 0xB8, 0xB9, 0x79, 0xBB, 0x7B, 0x7A, 0xBA, 0xBE, 0x7E, 
+  88          0x7F, 0xBF, 0x7D, 0xBD, 0xBC, 0x7C, 0xB4, 0x74, 0x75, 0xB5, 
+  89          0x77, 0xB7, 0xB6, 0x76, 0x72, 0xB2, 0xB3, 0x73, 0xB1, 0x71, 
+  90          0x70, 0xB0, 0x50, 0x90, 0x91, 0x51, 0x93, 0x53, 0x52, 0x92, 
+  91          0x96, 0x56, 0x57, 0x97, 0x55, 0x95, 0x94, 0x54, 0x9C, 0x5C, 
+  92          0x5D, 0x9D, 0x5F, 0x9F, 0x9E, 0x5E, 0x5A, 0x9A, 0x9B, 0x5B, 
+  93          0x99, 0x59, 0x58, 0x98, 0x88, 0x48, 0x49, 0x89, 0x4B, 0x8B, 
+  94          0x8A, 0x4A, 0x4E, 0x8E, 0x8F, 0x4F, 0x8D, 0x4D, 0x4C, 0x8C, 
+  95          0x44, 0x84, 0x85, 0x45, 0x87, 0x47, 0x46, 0x86, 0x82, 0x42, 
+  96          0x43, 0x83, 0x41, 0x81, 0x80, 0x40 
+  97          } ;
+  98          uchar asknode; // the current node for polling(ask for data in turn)
+  99          uchar mtx[8],mrx[10];
+ 100          uchar send101[]={0x01,0x04,0x00,0x00,0x00,0x03};
+ 101          uchar timercnt;
+ 102          uchar revptr;
+ 103          bit nodeok;
+ 104          bit procok;
+ 105          bit crcok;
+ 106          Uint16 delaycnt;
+ 107          uchar row3[]={"  V1   V2   V3  "};
+ 108          uchar row4[]={"  .    .    .   "};
+ 109          
+ 110          
+ 111          void main(void)
+ 112          {
+ 113   1         unsigned char temp8,temp8_1;
+ 114   1         Uint16 temp16,temp16_1,temp16_2;
+ 115   1          int i;
+ 116   1         reving=0;
+ 117   1         nodeok=0;
+C51 COMPILER V9.52.0.0   HOST                                                              12/26/2015 16:20:49 PAGE 3   
+
+ 118   1         timercnt=0x00;
+ 119   1         asknode=0x00;
+ 120   1         temp16_2=250;
+ 121   1         for(i=0;i<10;i++){mrx[i]=0x00;}
+ 122   1         for(i=0;i<8;i++){mtx[i]=0x00;}
+ 123   1      // tcnt=0;
+ 124   1      // rcnt=0;
+ 125   1      
+ 126   1         Delay400Ms(); //启动等待，等LCD讲入工作状态
+ 127   1         LCDInit(); //LCM初始化
+ 128   1         Delay5Ms(); //延时片刻(可不要)
+ 129   1         DisplayListChar(1, 0, row1);
+ 130   1         DisplayListChar(2, 1, row2);
+ 131   1         ReadDataLCD();//测试用句无意义   
+ 132   1      
+ 133   1         delaycnt=0xffff;
+ 134   1         while(delaycnt--){}
+ 135   1         delaycnt=0xffff;
+ 136   1         while(delaycnt--){}
+ 137   1      
+ 138   1         DisplayListChar(0, 0, row3);
+ 139   1         
+ 140   1         InitUART();
+ 141   1      
+ 142   1      /* for(i=0;i<8;i++)
+ 143   1         {  temp8=send101[i];
+ 144   1            SendOneByte(temp8);
+ 145   1         }*/  //test sending...
+ 146   1         procok=1; // preset the PROCCESS OK FLAG is 1,from the RX to PROCCESS OK the bit is 0.
+ 147   1         crcok=1;
+ 148   1         rw=1;  //accroding to the MAX485 IC, /RE=1 means transfering ,and /RE=0 means receiving ,after INIT ,defa
+             -ult state is transfering for HOST
+ 149   1         while(1)
+ 150   1         {  
+ 151   2            if((procok==1)&&(crcok==1))
+ 152   2            {           
+ 153   3               temp16_1=mrx[3];
+ 154   3               temp16_1*=temp16_2; // get the data from the communication and prepare the next frame for send
+ 155   3               temp16_1>>=7;
+ 156   3               switch(mrx[0])
+ 157   3               {  case 0x01:{row4[1]=(temp16_1/100)+0x30;row4[3]=((temp16_1%100)/10)+0x30;row4[4]=(temp16_1%10)+0x30;br
+             -eak;}
+ 158   4                  case 0x02:{row4[6]=(temp16_1/100)+0x30;row4[8]=((temp16_1%100)/10)+0x30;row4[9]=(temp16_1%10)+0x30;bre
+             -ak;}
+ 159   4                  case 0x03:{row4[11]=(temp16_1/100)+0x30;row4[13]=((temp16_1%100)/10)+0x30;row4[14]=(temp16_1%10)+0x30;
+             -break;}
+ 160   4                  default:{break;}
+ 161   4               }
+ 162   3               
+ 163   3               DisplayListChar(0, 1, row4); // display the data at the proper zone on the LCD
+ 164   3      
+ 165   3               delaycnt=0x3ff;
+ 166   3               while(delaycnt--){}
+ 167   3               rw=1;
+ 168   3               reving=1;
+ 169   3               send101[0]=(asknode++)+0x01;  // rolling the node of SLAVE for polling
+ 170   3               asknode%=3;
+ 171   3               temp16=Crc16(send101,6);  // generate the CRC and save it in an 16bit var
+*** WARNING C182 IN LINE 171 OF HOST.c: pointer to different objects
+ 172   3               for(i=0;i<6;i++){mtx[i]=send101[i];}
+ 173   3               mtx[6]=(temp16>>8)&0x00ff;
+ 174   3               mtx[7]=temp16&0x00ff;
+C51 COMPILER V9.52.0.0   HOST                                                              12/26/2015 16:20:49 PAGE 4   
+
+ 175   3               delaycnt=0x3ff;
+ 176   3               while(delaycnt--){}
+ 177   3               for(i=0;i<8;i++)
+ 178   3               {  temp8=mtx[i];
+ 179   4                  SendOneByte(temp8);
+ 180   4               }
+ 181   3               //tcnt=~tcnt;
+ 182   3               //tcnt=~tcnt; // generate a pulse to the counter in proteus when send an data asking frame
+ 183   3               procok=0;
+ 184   3               crcok=0;
+ 185   3               delaycnt=0x3ff;
+ 186   3               while(delaycnt--){}
+ 187   3               rw=0;
+ 188   3               reving=0; // blink the led when sent a data asking frame
+ 189   3            }
+ 190   2         }
+ 191   1      }
+*** WARNING C280 IN LINE 113 OF HOST.c: 'temp8_1': unreferenced local variable
+ 192          
+ 193          void Timer0Interrupt(void) interrupt 1
+ 194          {
+ 195   1          TH0 = 0x3C;
+ 196   1          TL0 = 0x0B0;
+ 197   1         if(++timercnt==5)
+ 198   1         {  procok=1;
+ 199   2            timercnt=0;
+ 200   2         }
+ 201   1      
+ 202   1      }
+ 203          
+ 204          void UARTInterrupt(void) interrupt 4
+ 205          {  uchar byterev;
+ 206   1          if(RI)
+ 207   1          {
+ 208   2              RI = 0;
+ 209   2              byterev=SBUF;
+ 210   2            mdproc(byterev);
+ 211   2          }
+ 212   1          else
+ 213   1              TI = 0;
+ 214   1      }
+ 215          
+ 216          
+ 217          void mdproc(uchar b)
+ 218          {  Uint16 temp16_1,temp16_2;
+ 219   1         if(nodeok==0)
+ 220   1         {  if(b==send101[0])
+ 221   2            {  nodeok=1;
+ 222   3               revptr=1;
+ 223   3               mrx[0]=b;
+ 224   3            }
+ 225   2         }
+ 226   1         else if(revptr<11)
+ 227   1         {  mrx[revptr++]=b;
+ 228   2         }
+ 229   1         else
+ 230   1         {
+ 231   2            revptr=0;
+ 232   2            nodeok=0;
+ 233   2            temp16_1=Crc16(mrx,9);
+*** WARNING C182 IN LINE 233 OF HOST.c: pointer to different objects
+ 234   2            temp16_2=mrx[9];
+C51 COMPILER V9.52.0.0   HOST                                                              12/26/2015 16:20:49 PAGE 5   
+
+ 235   2            temp16_2<<=8;
+ 236   2            temp16_2|=mrx[10];
+ 237   2            if(temp16_1==temp16_2)
+ 238   2            {  crcok=1;
+ 239   3               //rcnt=~rcnt;
+ 240   3               //rcnt=~rcnt; // generate a pulse to the counter in proteus when received correct frame
+ 241   3            }
+ 242   2                        
+ 243   2         }
+ 244   1      }
+ 245          
+ 246          void SendOneByte(unsigned char c)
+ 247          {
+*** WARNING C235 IN LINE 247 OF HOST.c: parameter 1: different types
+ 248   1          SBUF = c;
+ 249   1          while(!TI);
+ 250   1          TI = 0;
+ 251   1      }
+ 252          
+ 253          
+ 254          void InitUART(void)
+ 255          {
+ 256   1          TMOD = 0x20;
+ 257   1          SCON = 0x50;
+ 258   1          TH1 = 0xFE;
+ 259   1          TL1 = TH1;
+ 260   1          PCON = 0x00;
+ 261   1          EA = 1;
+ 262   1          ES = 1;
+ 263   1          TR1 = 1;
+ 264   1         
+ 265   1         TMOD |= 0x01;
+ 266   1          TH0 = 0x3C;
+ 267   1          TL0 = 0x0B0;  // timer sets at 20ms
+ 268   1          ET0 = 1;
+ 269   1          TR0 = 1;
+ 270   1      
+ 271   1      
+ 272   1      }
+ 273          
+ 274          
+ 275          Uint16 Crc16(uchar *puchMsg, Uint16 usDataLen) 
+ 276          { 
+*** WARNING C235 IN LINE 276 OF HOST.c: parameter 1: different types
+ 277   1         Uint16 uchCRCHi = 0xFF ;              /* 高CRC字节初始化  */ 
+ 278   1         Uint16 uchCRCLo = 0xFF ;              /* 低CRC 字节初始化 */ 
+ 279   1         Uint16 temp16;
+ 280   1         Uint32 uIndex ;                      /* CRC循环中的索引  */ 
+ 281   1         while (usDataLen--)                  /* 传输消息缓冲区   */ 
+ 282   1         { 
+ 283   2            temp16=*puchMsg++;
+ 284   2            uIndex = uchCRCHi ^ temp16 ; /* 计算CRC          */ 
+ 285   2            uchCRCHi = uchCRCLo ^ auchCRCHi[uIndex] ; 
+ 286   2            uchCRCLo = auchCRCLo[uIndex] ; 
+ 287   2         } 
+ 288   1         return (uchCRCHi << 8 | uchCRCLo) ; 
+ 289   1      }
+ 290          
+ 291          //写数据
+ 292          void WriteDataLCD(unsigned char WDLCD)
+ 293          {
+ 294   1       ReadStatusLCD(); //检测忙
+C51 COMPILER V9.52.0.0   HOST                                                              12/26/2015 16:20:49 PAGE 6   
+
+ 295   1       LCD_Data = WDLCD;
+ 296   1       LCD_RS = 1;
+ 297   1       LCD_RW = 0;
+ 298   1       LCD_E = 0; //若晶振速度太高可以在这后加小的延时
+ 299   1       LCD_E = 0; //延时
+ 300   1       LCD_E = 0;
+ 301   1       LCD_E = 1;
+ 302   1      }
+ 303          
+ 304          //写指令
+ 305          void WriteCommandLCD(unsigned char WCLCD,BuysC) //BuysC为0时忽略忙检测
+ 306          {
+ 307   1       if (BuysC) ReadStatusLCD(); //根据需要检测忙
+ 308   1       LCD_Data = WCLCD;
+ 309   1       LCD_RS = 0;
+ 310   1       LCD_RW = 0; 
+ 311   1       LCD_E = 0;
+ 312   1       LCD_E = 0;  
+ 313   1       LCD_E = 1; 
+ 314   1      }
+ 315          
+ 316          //读数据
+ 317          unsigned char ReadDataLCD(void)
+ 318          {
+ 319   1       LCD_RS = 1; 
+ 320   1       LCD_RW = 1;
+ 321   1       LCD_E = 0;
+ 322   1       LCD_E = 0;
+ 323   1       LCD_E = 1;
+ 324   1       return(LCD_Data);
+ 325   1      }
+ 326          
+ 327          //读状态
+ 328          unsigned char ReadStatusLCD(void)
+ 329          {
+ 330   1       LCD_Data = 0xFF; 
+ 331   1       LCD_RS = 0;
+ 332   1       LCD_RW = 1;
+ 333   1       LCD_E = 0;
+ 334   1       LCD_E = 0;
+ 335   1       LCD_E = 1;
+ 336   1       while (LCD_Data & Busy); //检测忙信号
+ 337   1       return(LCD_Data);
+ 338   1      }
+ 339          
+ 340          void LCDInit(void) //LCM初始化
+ 341          {
+ 342   1       LCD_Data = 0;
+ 343   1       WriteCommandLCD(0x38,0); //三次显示模式设置，不检测忙信号
+ 344   1       Delay5Ms(); 
+ 345   1       WriteCommandLCD(0x38,0);
+ 346   1       Delay5Ms(); 
+ 347   1       WriteCommandLCD(0x38,0);
+ 348   1       Delay5Ms(); 
+ 349   1      
+ 350   1       WriteCommandLCD(0x38,1); //显示模式设置,开始要求每次检测忙信号
+ 351   1       WriteCommandLCD(0x08,1); //关闭显示
+ 352   1       WriteCommandLCD(0x01,1); //显示清屏
+ 353   1       WriteCommandLCD(0x06,1); // 显示光标移动设置
+ 354   1       WriteCommandLCD(0x0C,1); // 显示开及光标设置
+ 355   1      }
+ 356          
+C51 COMPILER V9.52.0.0   HOST                                                              12/26/2015 16:20:49 PAGE 7   
+
+ 357          //按指定位置显示一个字符
+ 358          void DisplayOneChar(unsigned char X, unsigned char Y, unsigned char DData)
+ 359          {
+ 360   1       Y &= 0x1;
+ 361   1       X &= 0xF; //限制X不能大于15，Y不能大于1
+ 362   1       if (Y) X |= 0x40; //当要显示第二行时地址码+0x40;
+ 363   1       X |= 0x80; // 算出指令码
+ 364   1       WriteCommandLCD(X, 0); //这里不检测忙信号，发送地址码
+ 365   1       WriteDataLCD(DData);
+ 366   1      }
+ 367          
+ 368          //按指定位置显示一串字符
+ 369          void DisplayListChar(unsigned char X, unsigned char Y, unsigned char *DData)
+ 370          {
+ 371   1       unsigned char ListLength;
+ 372   1      
+ 373   1        ListLength = 0;
+ 374   1       Y &= 0x1;
+ 375   1       X &= 0xF; //限制X不能大于15，Y不能大于1
+ 376   1       while (DData[ListLength]>=0x20) //若到达字串尾则退出
+ 377   1        {
+ 378   2         if (X <= 0xF) //X坐标应小于0xF
+ 379   2          {
+ 380   3           DisplayOneChar(X, Y, DData[ListLength]); //显示单个字符
+ 381   3           ListLength++;
+ 382   3           X++;
+ 383   3          }
+ 384   2        }
+ 385   1      }
+ 386          
+ 387          //5ms延时
+ 388          void Delay5Ms(void)
+ 389          {
+ 390   1       unsigned int TempCyc = 5552;
+ 391   1       while(TempCyc--);
+ 392   1      }
+ 393          
+ 394          //400ms延时
+ 395          void Delay400Ms(void)
+ 396          {
+ 397   1       unsigned char TempCycA = 5;
+ 398   1       unsigned int TempCycB;
+ 399   1       while(TempCycA--)
+ 400   1       {
+ 401   2        TempCycB=7269;
+ 402   2        while(TempCycB--);
+ 403   2       };
+ 404   1      }
+ 405          
+ 406          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1235    ----
+   CONSTANT SIZE    =   1054    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     63      28
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      3    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  5 WARNING(S),  0 ERROR(S)

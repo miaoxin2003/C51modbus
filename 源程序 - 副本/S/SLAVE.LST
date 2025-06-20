@@ -1,0 +1,442 @@
+C51 COMPILER V9.55   SLAVE                                                                 06/20/2019 10:25:40 PAGE 1   
+
+
+C51 COMPILER V9.55, COMPILATION OF MODULE SLAVE
+OBJECT MODULE PLACED IN SLAVE.OBJ
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE SLAVE.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND TABS(3)
+
+line level    source
+
+   1          //FIRMWARE FOR SLAVE
+   2          #include <reg52.h>
+   3          #include <intrins.h>
+   4          
+   5          typedef unsigned char  U8;       /* defined for unsigned 8-bits integer variable      无符号8位整型变量  */
+   6          typedef signed   char  S8;       /* defined for signed 8-bits integer variable        有符号8位整型变量  */
+   7          typedef unsigned int   U16;      /* defined for unsigned 16-bits integer variable     无符号16位整型变量 */
+   8          typedef signed   int   S16;      /* defined for signed 16-bits integer variable    有符号16位整型变量 */
+   9          typedef unsigned long  U32;      /* defined for unsigned 32-bits integer variable     无符号32位整型变量 */
+  10          typedef signed   long  S32;      /* defined for signed 32-bits integer variable    有符号32位整型变量 */
+  11          typedef float          F32;      /* single precision floating point variable (32bits) 单精度浮点数（32位长
+             -度） */
+  12          typedef double         F64;      /* double precision floating point variable (64bits) 双精度浮点数（64位长
+             -度） */
+  13          //
+  14          #define uchar unsigned char
+  15          #define uint unsigned int
+  16          #define   Data_0_time    4
+  17          
+  18          #define Uint16 unsigned int
+  19          #define Uint32 unsigned long
+  20          #define uchar  unsigned char
+  21          
+  22          sbit nodesel0=P3^2;
+  23          sbit nodesel1=P3^3;
+  24          sbit reving=P1^6;
+  25          sbit rw=P3^4;
+  26          
+  27          sbit DHT11=P1^0;//ds18b20与单片机连接口
+  28          
+  29          U8  U8FLAG,k;
+  30          U8  U8count,U8temp;
+  31          U8  U8T_data_H,U8T_data_L,U8RH_data_H,U8RH_data_L,U8checkdata;
+  32          U8  U8T_data_H_temp,U8T_data_L_temp,U8RH_data_H_temp,U8RH_data_L_temp,U8checkdata_temp;
+  33          U8  U8comdata;
+  34          
+  35          U8  count, count_r=0;
+  36          
+  37          
+  38          
+  39          void InitUART(void);
+  40          void SendOneByte(unsigned);
+  41          void mdproc(uchar);
+  42          unsigned char ad0831read(void);  //定义该函数为读取ADC0831的数据
+  43          Uint16 Crc16(Uint16 *puchMsg, Uint16 usDataLen); 
+  44          
+  45          uchar node;
+  46          uchar mtx[11],mrx[10];
+  47          uchar send101[9]={0x00,0x04,0x06,0x00,0x00,0x00,0x00,0x00,0x00};
+  48          uchar timercnt;
+  49          
+  50          
+  51          // modbus protocal defination below :
+  52          uchar byterev;
+  53          bit nodeok;
+C51 COMPILER V9.55   SLAVE                                                                 06/20/2019 10:25:40 PAGE 2   
+
+  54          uchar revptr;
+  55          bit crcok;
+  56          uchar datalen;
+  57          bit procok;
+  58          Uint16 delaycnt;
+  59          
+  60          /* CRC 高位字节值表 */ 
+  61          const Uint16 code auchCRCHi[] = { 
+  62          0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 
+  63          0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 
+  64          0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 
+  65          0x80, 0x41, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 
+  66          0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 
+  67          0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41, 
+  68          0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 
+  69          0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 
+  70          0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 
+  71          0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 
+  72          0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 
+  73          0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 
+  74          0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 
+  75          0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 
+  76          0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 
+  77          0x80, 0x41, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 
+  78          0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 
+  79          0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 
+  80          0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 
+  81          0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 
+  82          0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 
+  83          0x80, 0x41, 0x00, 0xC1, 0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 
+  84          0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 0x80, 0x41, 0x00, 0xC1, 
+  85          0x81, 0x40, 0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 
+  86          0x00, 0xC1, 0x81, 0x40, 0x01, 0xC0, 0x80, 0x41, 0x01, 0xC0, 
+  87          0x80, 0x41, 0x00, 0xC1, 0x81, 0x40 
+  88          } ; 
+  89          
+  90          /* CRC低位字节值表*/ 
+  91          const Uint16 code auchCRCLo[] = { 
+  92          0x00, 0xC0, 0xC1, 0x01, 0xC3, 0x03, 0x02, 0xC2, 0xC6, 0x06, 
+  93          0x07, 0xC7, 0x05, 0xC5, 0xC4, 0x04, 0xCC, 0x0C, 0x0D, 0xCD, 
+  94          0x0F, 0xCF, 0xCE, 0x0E, 0x0A, 0xCA, 0xCB, 0x0B, 0xC9, 0x09, 
+  95          0x08, 0xC8, 0xD8, 0x18, 0x19, 0xD9, 0x1B, 0xDB, 0xDA, 0x1A, 
+  96          0x1E, 0xDE, 0xDF, 0x1F, 0xDD, 0x1D, 0x1C, 0xDC, 0x14, 0xD4, 
+  97          0xD5, 0x15, 0xD7, 0x17, 0x16, 0xD6, 0xD2, 0x12, 0x13, 0xD3, 
+  98          0x11, 0xD1, 0xD0, 0x10, 0xF0, 0x30, 0x31, 0xF1, 0x33, 0xF3, 
+  99          0xF2, 0x32, 0x36, 0xF6, 0xF7, 0x37, 0xF5, 0x35, 0x34, 0xF4, 
+ 100          0x3C, 0xFC, 0xFD, 0x3D, 0xFF, 0x3F, 0x3E, 0xFE, 0xFA, 0x3A, 
+ 101          0x3B, 0xFB, 0x39, 0xF9, 0xF8, 0x38, 0x28, 0xE8, 0xE9, 0x29, 
+ 102          0xEB, 0x2B, 0x2A, 0xEA, 0xEE, 0x2E, 0x2F, 0xEF, 0x2D, 0xED, 
+ 103          0xEC, 0x2C, 0xE4, 0x24, 0x25, 0xE5, 0x27, 0xE7, 0xE6, 0x26, 
+ 104          0x22, 0xE2, 0xE3, 0x23, 0xE1, 0x21, 0x20, 0xE0, 0xA0, 0x60, 
+ 105          0x61, 0xA1, 0x63, 0xA3, 0xA2, 0x62, 0x66, 0xA6, 0xA7, 0x67, 
+ 106          0xA5, 0x65, 0x64, 0xA4, 0x6C, 0xAC, 0xAD, 0x6D, 0xAF, 0x6F, 
+ 107          0x6E, 0xAE, 0xAA, 0x6A, 0x6B, 0xAB, 0x69, 0xA9, 0xA8, 0x68, 
+ 108          0x78, 0xB8, 0xB9, 0x79, 0xBB, 0x7B, 0x7A, 0xBA, 0xBE, 0x7E, 
+ 109          0x7F, 0xBF, 0x7D, 0xBD, 0xBC, 0x7C, 0xB4, 0x74, 0x75, 0xB5, 
+ 110          0x77, 0xB7, 0xB6, 0x76, 0x72, 0xB2, 0xB3, 0x73, 0xB1, 0x71, 
+ 111          0x70, 0xB0, 0x50, 0x90, 0x91, 0x51, 0x93, 0x53, 0x52, 0x92, 
+ 112          0x96, 0x56, 0x57, 0x97, 0x55, 0x95, 0x94, 0x54, 0x9C, 0x5C, 
+ 113          0x5D, 0x9D, 0x5F, 0x9F, 0x9E, 0x5E, 0x5A, 0x9A, 0x9B, 0x5B, 
+ 114          0x99, 0x59, 0x58, 0x98, 0x88, 0x48, 0x49, 0x89, 0x4B, 0x8B, 
+ 115          0x8A, 0x4A, 0x4E, 0x8E, 0x8F, 0x4F, 0x8D, 0x4D, 0x4C, 0x8C, 
+C51 COMPILER V9.55   SLAVE                                                                 06/20/2019 10:25:40 PAGE 3   
+
+ 116          0x44, 0x84, 0x85, 0x45, 0x87, 0x47, 0x46, 0x86, 0x82, 0x42, 
+ 117          0x43, 0x83, 0x41, 0x81, 0x80, 0x40 
+ 118          } ;
+ 119          
+ 120          
+ 121          
+ 122          void Delay(U16 j) //延时子函数
+ 123          {      U8 i;
+ 124   1         for(;j>0;j--)
+ 125   1         {
+ 126   2            for(i=0;i<27;i++);
+ 127   2      
+ 128   2         }
+ 129   1      }
+ 130          void  Delay_10us(void)//延时10us子函数
+ 131          {
+ 132   1         U8 i;
+ 133   1         i--;
+ 134   1         i--;
+ 135   1         i--;
+ 136   1         i--;
+ 137   1         i--;
+ 138   1         i--;
+ 139   1      }
+ 140             
+ 141          void  COM(void)   //读取DHT11数据
+ 142          {
+ 143   1           
+ 144   1         U8 i;
+ 145   1                
+ 146   1         for(i=0;i<8;i++)     //循环8次
+ 147   1         {
+ 148   2            
+ 149   2            U8FLAG=2;   //标志位=2
+ 150   2            while((!DHT11)&&U8FLAG++);//等待DHT11为1
+ 151   2            Delay_10us();//延时10us
+ 152   2            Delay_10us();//延时10us
+ 153   2            Delay_10us();//延时10us
+ 154   2            U8temp=0;   //清除缓存
+ 155   2            if(DHT11)U8temp=1;//获取数据
+ 156   2            U8FLAG=2;
+ 157   2            while((DHT11)&&U8FLAG++);//等待DHT11为0
+ 158   2               //超时则跳出for循环       
+ 159   2            if(U8FLAG==1)break;
+ 160   2               //判断数据位是0还是1  
+ 161   2                  
+ 162   2            // 如果高电平高过预定0高电平值则数据位为 1 
+ 163   2                
+ 164   2            U8comdata<<=1; //数据左移一位
+ 165   2            U8comdata|=U8temp;       //保存数据 //0
+ 166   2         }//rof
+ 167   1            
+ 168   1      }
+ 169          
+ 170             //--------------------------------
+ 171             //-----湿度读取子程序 ------------
+ 172             //--------------------------------
+ 173             //----以下变量均为全局变量--------
+ 174             //----温度高8位== U8T_data_H------
+ 175             //----温度低8位== U8T_data_L------
+ 176             //----湿度高8位== U8RH_data_H-----
+ 177             //----湿度低8位== U8RH_data_L-----
+C51 COMPILER V9.55   SLAVE                                                                 06/20/2019 10:25:40 PAGE 4   
+
+ 178             //----校验 8位 == U8checkdata-----
+ 179             //----调用相关子程序如下----------
+ 180             //---- Delay();, Delay_10us();,COM(); 
+ 181             //--------------------------------
+ 182          
+ 183          void RH(void)
+ 184          {
+ 185   1           //主机拉低18ms 
+ 186   1         DHT11=0;
+ 187   1         Delay(180);
+ 188   1         DHT11=1;
+ 189   1          //总线由上拉电阻拉高 主机延时20us
+ 190   1         Delay_10us();
+ 191   1         Delay_10us();
+ 192   1         Delay_10us();
+ 193   1         Delay_10us();
+ 194   1          //主机设为输入 判断从机响应信号 
+ 195   1         DHT11=1;
+ 196   1          //判断从机是否有低电平响应信号 如不响应则跳出，响应则向下运行   
+ 197   1         if(!DHT11)      //T !     
+ 198   1         {
+ 199   2            U8FLAG=2;
+ 200   2          //判断从机是否发出 80us 的低电平响应信号是否结束   
+ 201   2            while((!DHT11)&&U8FLAG++);
+ 202   2            U8FLAG=2;
+ 203   2          //判断从机是否发出 80us 的高电平，如发出则进入数据接收状态
+ 204   2            while((DHT11)&&U8FLAG++);
+ 205   2          //数据接收状态       
+ 206   2            COM();
+ 207   2            U8RH_data_H_temp=U8comdata;//读取温度值高位
+ 208   2            COM();
+ 209   2            U8RH_data_L_temp=U8comdata;//读取温度值低位
+ 210   2            COM();
+ 211   2            U8T_data_H_temp=U8comdata;//读取湿度值高位
+ 212   2            COM();
+ 213   2            U8T_data_L_temp=U8comdata;//读取湿度值低位
+ 214   2            COM();
+ 215   2            U8checkdata_temp=U8comdata;//获取校验值
+ 216   2            DHT11=1;
+ 217   2          //数据校验 
+ 218   2          
+ 219   2            U8temp=(U8T_data_H_temp+U8T_data_L_temp+U8RH_data_H_temp+U8RH_data_L_temp);//数据校验 
+ 220   2            if(U8temp==U8checkdata_temp)//数据校验 
+ 221   2            {
+ 222   3               U8RH_data_H=U8RH_data_H_temp;//保存湿度值
+ 223   3               U8RH_data_L=U8RH_data_L_temp;//保存湿度值
+ 224   3               U8T_data_H=U8T_data_H_temp;//保存温度值
+ 225   3               U8T_data_L=U8T_data_L_temp;//保存温度值
+ 226   3               U8checkdata=U8checkdata_temp;//保存校验值
+ 227   3            }//fi
+ 228   2         }//fi
+ 229   1      }
+ 230          
+ 231          
+ 232          void main(void)
+ 233          {
+ 234   1         unsigned char temp8,i1=0,i2=11;
+ 235   1         Uint16 temp16;
+ 236   1          int i;
+ 237   1         reving=1;
+ 238   1         crcok=0;
+ 239   1         nodeok=0;
+C51 COMPILER V9.55   SLAVE                                                                 06/20/2019 10:25:40 PAGE 5   
+
+ 240   1         timercnt=0x00;
+ 241   1         datalen=0;
+ 242   1         for(i=0;i<10;i++){mrx[i]=0x00;}
+ 243   1         for(i=0;i<11;i++){mtx[i]=0x00;}
+ 244   1      
+ 245   1         node=!nodesel1;
+ 246   1         node<<=1;
+ 247   1         node|=!nodesel0;  //SLAVE node is determine by the jumper set
+ 248   1         send101[0]=node;  //reply the node nummer
+ 249   1            
+ 250   1         InitUART();
+ 251   1      /* for(i=0;i<8;i++)
+ 252   1         {  temp8=send101[i];
+ 253   1            SendOneByte(temp8);
+ 254   1         }*/  //test sending...
+ 255   1         procok=0; // preset the PROCCESS OK FLAG is 1,from the RX to PROCCESS OK the bit is 0.
+ 256   1         rw=0;  //accroding to the MAX485 IC, /RE=1 means transfering ,and /RE=0 means receiving ,after INIT ,defa
+             -ult state is receiving for SLAVE
+ 257   1         while(1)
+ 258   1         {  
+ 259   2            if(crcok==1)  //plugin the time delay in the communication for monitoring easily in proteus
+ 260   2            {  reving=0;
+ 261   3               // i1++;
+ 262   3               //send101[3]=i1;//ad0831read();  //get the ADC data
+ 263   3               //send101[4]=i1;//ad0831read();  //get the ADC data
+ 264   3               i2++;
+ 265   3               if(i2>3)
+ 266   3               {
+ 267   4                  //调用温湿度读取子程序 
+ 268   4                  i2=0;
+ 269   4                  TR1 = 0;//Delay(1800);
+ 270   4                  RH();Delay(180);RH();
+ 271   4                  //U8RH_data_H=i2;U8T_data_H=i2+20;
+ 272   4                  TR1 = 1;//Delay(1800);
+ 273   4               }
+ 274   3               send101[3]=U8RH_data_H;
+ 275   3               send101[4]=U8T_data_H;
+ 276   3               for(i=0;i<9;i++){mtx[i]=send101[i];}
+ 277   3               temp16=Crc16(send101,9);
+*** WARNING C182 IN LINE 277 OF SLAVE.c: pointer to different objects
+ 278   3               mtx[9]=(temp16>>8)&0x00ff;
+ 279   3               mtx[10]=temp16&0x00ff;
+ 280   3      
+ 281   3               delaycnt=0x3fff;
+ 282   3               while(delaycnt--){}
+ 283   3               rw=1;
+ 284   3               delaycnt=0x3ff;
+ 285   3               while(delaycnt--){}
+ 286   3               for(i=0;i<11;i++)
+ 287   3               {  temp8=mtx[i];
+ 288   4                  SendOneByte(temp8);
+ 289   4               }
+ 290   3               crcok=0;
+ 291   3               delaycnt=0x3ff;
+ 292   3               while(delaycnt--){}
+ 293   3               rw=0;
+ 294   3               reving=1; // blink the led when received a currect frame and replied
+ 295   3            }        
+ 296   2         }
+ 297   1      }
+ 298          
+ 299          
+C51 COMPILER V9.55   SLAVE                                                                 06/20/2019 10:25:40 PAGE 6   
+
+ 300          Uint16 Crc16(uchar *puchMsg, Uint16 usDataLen) 
+ 301          { 
+*** WARNING C235 IN LINE 301 OF SLAVE.c: parameter 1: different types
+ 302   1         Uint16 uchCRCHi = 0xFF ;              /* 高CRC字节初始化  */ 
+ 303   1         Uint16 uchCRCLo = 0xFF ;              /* 低CRC 字节初始化 */ 
+ 304   1         Uint16 temp16;
+ 305   1         Uint32 uIndex ;                      /* CRC循环中的索引  */ 
+ 306   1         while (usDataLen--)                  /* 传输消息缓冲区   */ 
+ 307   1         { 
+ 308   2            temp16=*puchMsg++;
+ 309   2            uIndex = uchCRCHi ^ temp16 ; /* 计算CRC          */ 
+ 310   2            uchCRCHi = uchCRCLo ^ auchCRCHi[uIndex] ; 
+ 311   2            uchCRCLo = auchCRCLo[uIndex] ; 
+ 312   2         } 
+ 313   1         return (uchCRCHi << 8 | uchCRCLo) ; 
+ 314   1      }
+ 315          
+ 316          
+ 317          void Timer0Interrupt(void) interrupt 1
+ 318          {
+ 319   1          //TH0 = 0x3C;
+ 320   1          //TL0 = 0x0B0;
+ 321   1         if(++timercnt==50)
+ 322   1         {//   procok=1;
+ 323   2            timercnt=0;
+ 324   2         }
+ 325   1      
+ 326   1      }
+ 327          
+ 328          void UARTInterrupt(void) interrupt 4
+ 329          {
+ 330   1          if(RI)
+ 331   1          {
+ 332   2              RI = 0;
+ 333   2              byterev=SBUF;
+ 334   2            mdproc(byterev);
+ 335   2          }
+ 336   1          else
+ 337   1              TI = 0;
+ 338   1      }
+ 339          
+ 340          void mdproc(uchar b)  //the simply MODBUS 04 command processing ,if node is right , then receive the whole
+             - frame and cheak the CRC , if CRC is OK ,then reply data to the HOST
+ 341          {  Uint16 temp16_1,temp16_2;
+ 342   1         if(nodeok==0)
+ 343   1         {  if(b==node)
+ 344   2            {  nodeok=1;
+ 345   3               datalen=7;
+ 346   3               mrx[0]=b;
+ 347   3               revptr=1;
+ 348   3            }
+ 349   2         }
+ 350   1         else
+ 351   1         {  mrx[revptr++]=b;
+ 352   2            if(revptr==8)
+ 353   2            {  nodeok=0;
+ 354   3               temp16_1=Crc16(mrx,6);
+ 355   3               temp16_2=mrx[6];
+ 356   3               temp16_2<<=8;
+ 357   3               temp16_2|=mrx[7];
+ 358   3               if(temp16_1==temp16_2)
+ 359   3               {  crcok=1;
+C51 COMPILER V9.55   SLAVE                                                                 06/20/2019 10:25:40 PAGE 7   
+
+ 360   4               // reving=~reving;  
+ 361   4               }
+ 362   3                        
+ 363   3            }
+ 364   2         }
+ 365   1      }
+ 366          
+ 367          void SendOneByte(unsigned char c)
+ 368          {
+*** WARNING C235 IN LINE 368 OF SLAVE.c: parameter 1: different types
+ 369   1          SBUF = c;
+ 370   1          while(!TI);
+ 371   1          TI = 0;
+ 372   1      }
+ 373          
+ 374          
+ 375          void InitUART(void)
+ 376          {
+ 377   1          TMOD = 0x20;
+ 378   1          SCON = 0x50;
+ 379   1          TH1 = 0xFE;
+ 380   1          TL1 = TH1;
+ 381   1          PCON = 0x00;
+ 382   1          EA = 1;
+ 383   1          ES = 1;
+ 384   1          TR1 = 1;
+ 385   1         
+ 386   1         //TMOD |= 0x01;
+ 387   1          //TH0 = 0x3C;
+ 388   1          //TL0 = 0x0B0;  // timer sets at 20ms
+ 389   1         // ET0 = 1;
+ 390   1          //TR0 = 1;
+ 391   1      
+ 392   1      
+ 393   1      }
+ 394          
+ 395          
+ 396          void delay(void)                       //空5个指令
+ 397          {
+ 398   1         _nop_();_nop_();_nop_();_nop_();_nop_();
+ 399   1      
+ 400   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    862    ----
+   CONSTANT SIZE    =   1024    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     54      19
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      3    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  3 WARNING(S),  0 ERROR(S)
